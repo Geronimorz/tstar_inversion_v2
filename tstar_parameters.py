@@ -62,7 +62,7 @@ def set_parameters():
         ##OPTIONS FOR PLOTTING FIGURES
         "doplotseis": False,
         "doplotsnr": False,
-        "doplotspec": True,
+        "doplotspec": False,
         "plotspecloglog": True,
         "doplotfcts": True,
         "doplotfcall": True,
@@ -79,7 +79,7 @@ def set_parameters():
 def working_dir():
     """ All the working directories with absolute paths
     """
-    global workdir, sacdir, gsdir, figdir, resultdir, figdir1, figdir2, figdir3, figdir4, figdir5
+    global workdir, sacdir, gsdir, figdir, resultdir, figdir1, figdir2, figdir3, figdir4, figdir5, logfl, fclist
     maindir = os.path.abspath(os.getcwd())
     workdir = maindir + '/workdir'    ## OUTPUT DIRECTOR
     if not os.path.isdir(workdir):
@@ -96,6 +96,11 @@ def working_dir():
     figdir3 = figdir + '/plotspec' 
     figdir4 = figdir + '/plottstar-fc'
     figdir5 = figdir + '/plotfall'
+
+    logfile = workdir + '/event.log' 
+    logfl=open(logfile,'a')
+    fclist=open(workdir + '/bestfc.lst','a')
+    
 
     dir_lst = [figdir, resultdir, figdir1, figdir2, figdir3, figdir4, figdir5]
     for idir in dir_lst:

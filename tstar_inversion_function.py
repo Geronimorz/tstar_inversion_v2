@@ -4,6 +4,7 @@
 import numpy as np
 from scipy.optimize import *
 from scipy.linalg import lstsq
+from matplotlib import pyplot as plt
 import tstar_parameters as tp
 import tstar_load 
 import tstarsub
@@ -137,17 +138,27 @@ def inversion(orid, saving, stalst, ORIG, POS, icase, param):
     ##################################################################
  
     """
-
     idata = (icase==3 and 2 or icase)
-    data = tstarsub.buildd(saving,stalst,ORIG,POS,idata,param['source_para'])
+    
+    data = tstarsub.buildd(saving,stalst,ORIG,POS,idata,param['source_para'],ORIG['fc'])
     G = tstarsub.buildG(saving,stalst,param['alpha'],POS,idata,param['source_para'])
     Ginv=np.linalg.inv(np.dot(G[:,:,0].transpose(),G[:,:,0]))
     model,residu=nnls(G[:,:,0],data[:,0])
     if param['source_para'] == 1:
         lnmomen=model[0]      ## MOMENT
         tstar=model[1:]       ## t*
-    else:
+        ## MOMENT MAGNITUDE Mw
+        momen=np.exp(lnmomen)
+        Mw=float(2.0/3.0*np.log10(momen*1e7)-10.73)
+        ORIG['mo'] = momen
+        ORIG['mw'] = Mw
+        # tp.logfl.write('Mw = %.2f, Mwisc = %.2f\n' % (Mw,Mwisc))
+    elif param['source_para'] == 2:
         tstar=model           ## t*
+        lnmomen=np.log(ORIG['mo'])
+    elif param['source_para'] == 3:
+        tstar=model           ## t*
+        # lnmomen=np.log(ORIG['mo'])
     if icase == 2:
         ferr=open(tp.resultdir+'/%s_perr%03d.dat' % (orid,int(param['alpha']*100)),'w')
         ferr.write('%15f %7d %15f %15f\n' % (residu,data.shape[0],
@@ -179,7 +190,7 @@ def inversion(orid, saving, stalst, ORIG, POS, icase, param):
         if icase == 2:
             ## Measure how synthetic curve fit the observed data
             if saving[sta][icase]['good'][0]:
-                pfitting=tstarsub.fitting(saving,sta,ORIG,POS,param['alpha'],2)
+                pfitting=tstarsub.fitting(saving,sta,ORIG,POS,param['alpha'],lnmomen,2)
                 saving[sta][icase]['fitting']=[pfitting]
             else:
                 saving[sta][icase]['fitting']=[1000]
@@ -189,7 +200,99 @@ def inversion(orid, saving, stalst, ORIG, POS, icase, param):
                                                 ORIG['fc'],param['alpha'])]
         k1=k2
 
-    return saving
+    return ORIG, saving
+
+def bestfc(orid, saving, stalst, ORIG, POS, icase, param):
+    """ APPROXIMATE CORNER FREQUENCY RANGE BASED ON MAGNITUDE
+    EQUATION 4 AND 5 IN Pozgay et al, G3, 2009
+    CAREFUL WITH THE UNITS: fc=m/s*((10e6N/m^2)*(N*m))^(1/3)
+    = m/s*(10e6N/(N*m^3))^(1/3) = m/s(10^2/m) = 100/s = 100 Hz
+    """
+    if ORIG['mb']<=0:
+        ORIG['mb']=3
+    Mwisc=1.54*ORIG['mb']-2.54  # Mw=1.54mb-2.54, Das et al., 2011 (PREFERED)
+    mo=10**(1.5*Mwisc+9.095) ## MOMENT IN N*m
+    fclow=0.49*((param['dstress'][0]/mo)**(1.0/3.0))*param['beta']*100
+    fchigh=0.49*((param['dstress'][1]/mo)**(1.0/3.0))*param['beta']*100
+    if fclow<1 and fchigh<=1.1:
+        fc=np.arange(fclow,fchigh,0.02)
+    elif fclow<1 and fchigh>1.1:
+        fc=np.hstack((np.arange(fclow,1.09,0.02),np.arange(1.1,fchigh,0.1)))
+    else:
+        fc=np.arange(fclow,fchigh,0.1)
+    if max(fc)<fchigh:
+        fc=np.hstack((fc,fchigh))
+    if fc.shape[0]<5:
+        tp.logfl.write('Too narrow frequency band for finding fc')
+        return ORIG, 0
+    tp.logfl.write('fc for 0.5 MPa: %.2f,fc for 20 MPa: %.2f\n' % (fclow,fchigh))
+    tp.logfl.write('fc(P) will range from %.2f to %.2f for P\n' % (min(fc),max(fc)))
+    
+    ## BUILD G MATRIX TO FIND BEST fc AND alpha
+    G = tstarsub.buildG(saving,stalst,param['alpha'],POS,icase,param['source_para'])
+    Ginv=np.linalg.inv(np.dot(G[:,:,0].transpose(),G[:,:,0]))
+    tsfc=np.zeros((len(fc),len(stalst)))
+    for ifc in range(len(fc)):
+        data = tstarsub.buildd(saving,stalst,ORIG,POS,icase,param['source_para'],fc[ifc])
+        model,residu = nnls(G[:,:,0],data[:,0])
+        lnmomen = model[0]      ## MOMENT
+        tstar = model[1:]       ## t*
+        L2P = residu/np.sum(data[:,0])
+        vardat = L2P/(data.shape[0]-len(stalst)-1)
+        lnmomen_err = np.sqrt(vardat*Ginv[0][0])
+        tstar_err = np.sqrt(vardat*Ginv.diagonal()[1:])
+        tsfc[ifc,:]=tstar
+        try:
+            result
+        except NameError:
+            result=np.array([[fc[ifc],lnmomen,L2P,vardat,lnmomen_err]])
+        else:
+            result=np.vstack((result,np.array([[fc[ifc],lnmomen,L2P,vardat,lnmomen_err]])))
+    L2Pall=result[:,2].tolist()
+    bestresult=result[L2Pall.index(min(L2Pall))]
+    bestfc=float(bestresult[0])
+    ORIG['fc'] = bestfc
+    tp.logfl.write('Best fc(P) = %.2f Hz\n' % (bestfc))
+    if max(fc)==bestfc:
+        tp.logfl.write('Warning: best fc is upper limit of fc\n')
+    if bestfc==min(fc):
+        tp.logfl.write('Warning: best fc is lower limit of fc\n')
+    tp.fclist.write('%s   %.2f  %.1f\n' % (orid,bestfc,ORIG['mb']))
+
+    ## PLOTTING L2P VS CORNER FREQUENCY
+    if param['doplotfcall']:
+        fig=plt.figure(10)
+        fig.clf()
+        fig.subplots_adjust(wspace=0.3,hspace=0.3)
+        ax1=fig.add_subplot(1,2,1)
+        ax1.plot(result[:,0],L2Pall,'b*-')
+        ax1.plot(bestfc,min(L2Pall),'r^',ms=10)
+        ax1.set_xlabel('Corner Frequency (Hz)')
+        ax1.set_ylabel('L2 Norm')
+        ax1.set_title('ORID = %s' % (orid))
+        ax2=fig.add_subplot(1,2,2)
+        ax2.plot(result[:,0],np.log10(np.exp(result[:,1])*1e7),'b*-')
+        ax2.plot(bestfc,np.log10(np.exp(bestresult[1])*1e7),'r^',ms=10)
+        ax2.set_xlabel('Corner Frequency (Hz)')
+        ax2.set_ylabel('log10(moment)')
+        ax2.set_title('ORID = %s' % (orid))
+        fig.savefig(tp.figdir5+'/%s_fcP.pdf' % (orid))
+        
+    ## PLOT t*(P) VS CORNER FREQUENCY FOR EACH STATION
+    if param['doplotfcts']:
+        for ista in range(len(stalst)):
+            plt.figure(20)
+            plt.clf()
+            tspert=(tsfc[:,ista]-np.mean(tsfc[:,ista]))/np.mean(tsfc[:,ista])*100
+            plt.plot(fc,tspert,'b*-')
+            plt.plot(bestfc,tspert[fc==bestfc],'r^',ms=10)
+            plt.title('ORID = %s at %s' % (orid,stalst[ista]))
+            plt.xlabel('fc')
+            plt.ylabel('t* perturbation (%)')
+            plt.savefig(tp.figdir4+'/%s_%s_fcts.pdf' % (orid,stalst[ista]))
+ 
+
+    return ORIG, 1
 
 def output_results(orid, staP3lst, param, ORIG, saving):
     ## OUTPUT P RESIDUAL SPECTRA FOR SITE EFFECTS
@@ -217,7 +320,9 @@ def output_results(orid, staP3lst, param, ORIG, saving):
             if saving[sta][2]['good'][0]:
                 print('Plotting P spectrum of ' + sta)
                 lnM = np.log(ORIG['mo'])
+                print(lnM,ORIG['fc'],ORIG['mo'])
                 tstarsub.plotspec(saving[sta],sta,orid,'P',lnM,
                                   ORIG['fc'],param['alpha'],3)
 
     return
+

@@ -3,9 +3,10 @@ read input arrival times
 cut data in the main function
 
 
-softwares need to install:
+softwares and packages need to install:
 sac
-
+mpi4py
+mtspec
 
 necessary directory and input files:
 *should make a 'data' directory in the main directory, the input files should be saved in the ./data directory

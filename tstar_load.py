@@ -4,6 +4,7 @@
 import os
 import subprocess as sp
 import numpy as np
+import tstar_parameters as tp
 
 def channels(sta):
     """
@@ -72,7 +73,7 @@ def loadORIG(orid, source_para,ORIG,cmd):
     ########################################################################
     return ORIG
 
-def loaddata(logfl, param, orid, fldir):
+def loaddata(param, orid, fldir):
     """
     Load data from 
     1) sac files from './data/processedSeismograms'
@@ -158,10 +159,10 @@ def loaddata(logfl, param, orid, fldir):
     numP = len([sta for sta in stalst if ARRIV[sta]['T0']!=-1])
     numS = len([sta for sta in stalst if ARRIV[sta]['T1']!=-1])
     if numSTA > numS:
-        logfl.write('%d Records: %d for P and %d for S\n' % (numSTA,numP,numS))
+        tp.logfl.write('%d Records: %d for P and %d for S\n' % (numSTA,numP,numS))
     elif numSTA < numS:
-        logfl.write('%d Records: %d for P and %d for S\n' % (numSTA,numP,numS))
-        logfl.write('You must have numP >= numS\n')
+        tp.logfl.write('%d Records: %d for P and %d for S\n' % (numSTA,numP,numS))
+        tp.logfl.write('You must have numP >= numS\n')
         stalst = 0
 
     

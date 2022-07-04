@@ -353,7 +353,7 @@ def dospec(pwindata, orid, sta, param, chan, data_quality):
 
     return goodP, goodS, spec_px, freq_px, pspec, pn_spec, pfreq, pn_freq, frmin, frmax
 
-def buildd(saving,stalst,ORIG,POS,icase,source_para,lnM=0):
+def buildd(saving,stalst,ORIG,POS,icase,source_para,fc,lnM=0):
     """
     Build data matrix
         d = [ln(A1)-ln(C1)+ln(1+(f1i/fc)**2),                   ##
@@ -377,7 +377,7 @@ def buildd(saving,stalst,ORIG,POS,icase,source_para,lnM=0):
     else:
         raise ValueError("P or S wave?")
     
-    fc, mw, mo = ORIG['fc'], ORIG['mw'], ORIG['mo']
+    mw, mo = ORIG['mw'], ORIG['mo']
     if source_para == 2:
         lnM = np.log(mo)
 
@@ -435,7 +435,7 @@ def buildG(saving,stalst,alpha,POS,icase,source_para):
 
     return G
 
-def fitting(saving,sta,ORIG,POS,alpha,icase):
+def fitting(saving,sta,ORIG,POS,alpha,lnmomen,icase):
 ## CALCULATE HOW WELL THE SYNTHETIC SPECTRUM FITS THE DATA
 ## IF THE FITTING CURVE IS BELOW THE NOISE, THEN resid = 999999.
     if POS.upper()=='P':
@@ -447,10 +447,9 @@ def fitting(saving,sta,ORIG,POS,alpha,icase):
     corr=saving[sta]['corr'][ind]
     freq, spec=saving[sta][icase][POS.lower()][0], saving[sta][icase][POS.lower()][1]
     invtstar=saving[sta][icase]['tstar'][ind]
-    synx=(corr*ORIG['mo']*np.exp(-np.pi*freq*(freq**(-alpha))*invtstar)/(1+(freq/ORIG['fc'])**2))
+    synx=(corr*np.exp(lnmomen)*np.exp(-np.pi*freq*(freq**(-alpha))*invtstar)/(1+(freq/ORIG['fc'])**2))
 
-    resid=(1-((np.linalg.norm(np.log(synx)-np.log(spec)))**2/(len(freq)-1)
-             /np.var(np.log(spec)))) 
+    resid=(1-((np.linalg.norm(np.log(synx)-np.log(spec)))**2/(len(freq)-1)/np.var(np.log(spec)))) 
     ##    RESID = 1-√(∑((ln(A(synthetic))-ln(A(observed)))^2))/(n-1)/σ(ln(A(observed))) Bill Menke, 'geophysical data analysis discrete inverse theory'
     resid1=(np.linalg.norm(np.log(synx)-np.log(spec))/(len(freq)))/0.30
     ##    L2-NORM MISFIT = √(∑((ln(A(synthetic))-ln(A(observed)))^2))/n. Here 0.30 is just for normalization
@@ -551,9 +550,10 @@ def plotspec(saving,sta,orid,POS,lnmomen,fc,alpha,icase,sitedata=0):
         plt.plot(freq,np.log(spec)-sitedata,'b--')
     plt.plot(freq,np.log(spec),'b')
     plt.plot(n_freq,np.log(n_spec),'r')
+    plt.plot(freq,np.log(synspec),'g--',linewidth=2)
     plt.plot([frmin,frmin],np.log([min(n_spec),max(spec)]),'g')
     plt.plot([frmax,frmax],np.log([min(n_spec),max(spec)]),'g')
-    plt.plot(freq,np.log(synspec),'g--',linewidth=2)
+    
     ## yurong: S wave work
     # if POS.upper()=='S':
     #     plt.plot(freq,np.log(synspec2),'k:',linewidth=2)
